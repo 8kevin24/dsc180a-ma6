@@ -49,7 +49,14 @@ FORBIDDEN = LEAKAGE_COLS | TIME_INDEX_COLS | UNVERIFIED_COLS
 TRAIN_END = "2011-12-31"
 VALID_END = "2012-06-30"
 
+# Window lengths, in calendar days. WEEK is the weekly lag/rolling window;
+# MONTH_WINDOW is the 28-day rolling level added in Exercise 1.
+WEEK = 7
+MONTH_WINDOW = 28
+
 # Longest lag window in src/features.py. The first LAG_WARMUP calendar days
 # have no complete history and are dropped; tests/test_contract.py uses this
-# to bound how many rows may legitimately disappear.
-LAG_WARMUP = 7
+# to bound how many rows may legitimately disappear. It is a *bound*, not a
+# window: features must use WEEK / MONTH_WINDOW, never LAG_WARMUP, or
+# raising the bound silently changes what an existing feature means.
+LAG_WARMUP = max(WEEK, MONTH_WINDOW)
