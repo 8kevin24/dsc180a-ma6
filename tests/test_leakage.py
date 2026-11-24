@@ -64,3 +64,19 @@ def test_no_missing_values(feats):
 def test_dates_are_sorted_and_unique(feats):
     assert feats.dteday.is_monotonic_increasing
     assert feats.dteday.is_unique
+
+
+def test_roll_28_is_mean_of_28_prior_calendar_days(feats):
+    """cnt_roll_28 on 2012-03-15 must equal the mean of cnt on the 28
+    calendar days 2012-02-16 .. 2012-03-14, computed by hand from the raw
+    file -- not from the feature frame, whose helper could share a bug."""
+    raw = load_raw().set_index("dteday")[TARGET]
+    date = pd.Timestamp("2012-03-15")
+    window = pd.date_range(date - pd.Timedelta(days=28), date - pd.Timedelta(days=1))
+    assert len(window) == 28 and window.max() < date
+    expected = raw.loc[window].mean()
+    got = feats.set_index("dteday").cnt_roll_28[date]
+    assert got == pytest.approx(expected), f"cnt_roll_28 {got} != {expected}"
+    # Today's count must not be in the window: if it were, the value would
+    # move when cnt[date] changes.
+    assert got != pytest.approx(raw.loc[window[1:].append(pd.DatetimeIndex([date]))].mean())
