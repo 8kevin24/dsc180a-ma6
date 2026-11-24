@@ -10,8 +10,16 @@
 set -uo pipefail
 
 payload=$(cat)
-path=$(printf '%s' "$payload" | python3 -c \
-  'import json,sys; print(json.load(sys.stdin).get("tool_input",{}).get("file_path",""))')
+# Use the same interpreter as the pytest call below. The starter used
+# `python3`, which on Windows is a Microsoft Store stub: the parse failed,
+# $path came back empty, and the hook exited 0 on every edit -- silently.
+PY=$(command -v python || command -v python3)
+if ! path=$(printf '%s' "$payload" | "$PY" -c \
+  'import json,sys; print(json.load(sys.stdin).get("tool_input",{}).get("file_path",""))'); then
+  echo "check_leakage.sh: could not parse hook payload with $PY" >&2
+  exit 2
+fi
+path=${path//\\//}   # Windows backslashes -> forward slashes
 
 case "$path" in
   *src/*.py) ;;
@@ -19,7 +27,7 @@ case "$path" in
 esac
 
 cd "${CLAUDE_PROJECT_DIR:-.}" || exit 0
-if ! out=$(python -m pytest tests/test_leakage.py -q 2>&1); then
+if ! out=$("$PY" -m pytest tests/test_leakage.py -q 2>&1); then
   echo "Leakage tests failed after editing $path:" >&2
   echo "$out" | tail -20 >&2
   exit 2
