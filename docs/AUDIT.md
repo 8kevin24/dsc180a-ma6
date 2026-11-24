@@ -13,8 +13,8 @@ the subagent's body, the tools are exactly its `Read, Grep, Glob, Bash`, and
 Edit/Write are disallowed. `setting_sources=[]` keeps their `settings.json`
 (hooks, Ollama endpoint) from loading on my machine. The prompt only named
 the diff to review and said `python` with the pinned requirements was on
-PATH. Model and turns: `model=claude-opus-5-5 turns=6 is_error=False`. The runner script is not in this repo; it
-lived in my scratch directory.
+PATH. Model and turns: `model=claude-opus-5-5 turns=6 is_error=False`. Runner:
+`agent/run_leakage_auditor.py`.
 
 ### Auditor output (verbatim)
 
@@ -54,15 +54,25 @@ Command: `AUDIT_MODEL=claude-sonnet-5-5 python agent/audit.py . --out reports/au
 I used a hosted model because Ollama is not installed on this machine. See
 REPORT.md, Attribution.
 
-### Auditor output (verbatim, `reports/audit.jsonl`)
+### Final run, on the finished repo (verbatim, `reports/audit.jsonl`)
+
+```
+{"repo": "D:\\capstone\\bikeshare-open", "leakage": "none", "temporal_ok": true, "baseline_reported": true, "reproducible": true, "findings": [{"file": "src/train.py", "line": 54, "issue": "Only HistGradientBoostingRegressor has random_state=0. There is no global seed. Ridge and the baselines are deterministic, so nothing is unseeded in practice.", "why_it_matters": "Low risk today. A new stochastic model would need its own seed."}], "confidence": "high"}
+```
+
+Verdict: the one finding changes no number, and I agree it is low risk.
+`random_state=0` is set on the only stochastic model. Ridge, the mean
+baseline and persistence have no randomness, which is why a fresh clone
+reproduces `metrics.json` byte-for-byte. I left the code as is: adding a
+global seed would document intent but change nothing.
+
+### First run, before the hooks and teammate audit were added
 
 ```
 {"repo": "D:\\capstone\\bikeshare-open", "leakage": "none", "temporal_ok": true, "baseline_reported": true, "reproducible": true, "findings": [{"file": "README.md", "line": 25, "issue": "README says `make test` runs 14 tests, but 19 tests ran and passed.", "why_it_matters": "Minor documentation drift. It doesn't affect the methodology."}, {"file": "src/features.py", "line": 68, "issue": "Lag and rolling features are built on the full table before the split. All of them use shift(1) or shift(7) on a gap-free calendar index, so they only look backward.", "why_it_matters": "Not a fault. Each feature at time t uses only past values, and the first valid-split rows legitimately use late-2011 targets as lags."}], "confidence": "high"}
 ```
 
-### My verdict
-
-Neither finding changes a number, and I agree with both. The first is
+Verdict on that run: neither finding changes a number, and I agree with both. The first is
 real documentation drift: the README still said 14 tests after I added five.
 I fixed it in the same commit as this file. The second is a correct
 non-finding. Building lags before the split is safe because every one is
