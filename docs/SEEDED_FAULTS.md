@@ -136,11 +136,11 @@ Change:
 ______________________ test_rolling_mean_excludes_today _______________________
 tests\test_leakage.py:57: in test_rolling_mean_excludes_today
     assert feats.set_index("dteday").cnt_roll_7[date] == pytest.approx(expected)
-E   assert np.float64(4605.285714285715) == 4724.428571428572 �± 0.00472443
+E   assert np.float64(4605.285714285715) == 4724.428571428572 ± 0.00472443
 E     
 E     comparison failed
 E     Obtained: 4605.285714285715
-E     Expected: 4724.428571428572 �± 0.00472443
+E     Expected: 4724.428571428572 ± 0.00472443
 =========================== short test summary info ===========================
 FAILED tests/test_leakage.py::test_rolling_mean_excludes_today - assert np.fl...
 1 failed, 15 passed in 3.25s
@@ -150,11 +150,11 @@ Hook stderr (last 12 lines; the full block also dumps the fixture frame):
 
 ```
 >           assert feats.set_index("dteday").cnt_roll_7[date] == pytest.approx(expected)
-E           assert np.float64(4605.285714285715) == 4724.428571428572 �± 0.00472443
+E           assert np.float64(4605.285714285715) == 4724.428571428572 ± 0.00472443
 E             
 E             comparison failed
 E             Obtained: 4605.285714285715
-E             Expected: 4724.428571428572 �± 0.00472443
+E             Expected: 4724.428571428572 ± 0.00472443
 
 tests\test_leakage.py:57: AssertionError
 =========================== short test summary info ===========================
@@ -304,12 +304,43 @@ FAILED tests/test_contract.py::test_raw_file_is_unmodified - ValueError: bike...
 
 Restored with `git checkout -- data/raw/`. The sha256 is back to `a6bed1577f6e4de5...`.
 
-Other mechanisms that would also work, but are not implemented here:
+### Second mechanism: block the write before it happens
 
-- A **PreToolUse hook on `Bash`** that exits 2 when the command string
-  writes to `data/raw/` (`cp`, `mv`, `>`, `tee`, `sed -i`). This blocks the
-  write before it happens. A command string can be obfuscated, so it is a
-  filter, not a guarantee.
+I added a **PreToolUse hook on `Bash`**, `.claude/hooks/guard_raw.sh`,
+registered in `.claude/settings.json`. It exits 2 when a command writes into
+`data/raw/`: redirection, `cp`/`install` *to* it, `mv`/`rm`/`tee`/`touch`,
+`sed -i`, or pandas/`open()` writes. Copying *out of* `data/raw/` and
+`git checkout -- data/raw/` are allowed. Each case was fed to the hook as
+the PreToolUse payload Claude Code sends:
+
+```
+ok   exit 2 | want 2 | cp /tmp/bike_daily_fixed.csv data/raw/bike_daily.csv
+ok   exit 2 | want 2 | echo x >> data/raw/bike_daily.csv
+ok   exit 2 | want 2 | sed -i 's/22/5000/' data/raw/bike_daily.csv
+ok   exit 2 | want 2 | mv data/raw/bike_daily.csv /tmp/x.csv
+ok   exit 2 | want 2 | python -c "import pandas as pd; pd.read_csv('data/raw/bike_daily.csv').to_csv('data/raw/bike_daily.csv')"
+ok   exit 2 | want 2 | cp C:\tmp\x.csv data\raw\bike_daily.csv
+ok   exit 2 | want 2 | cp x.csv data/raw/bike_daily.csv && make test
+ok   exit 0 | want 0 | git checkout -- data/raw/
+ok   exit 0 | want 0 | sha256sum data/raw/bike_daily.csv
+ok   exit 0 | want 0 | head -3 data/raw/bike_daily.csv
+ok   exit 0 | want 0 | python -m pytest tests -q
+ok   exit 0 | want 0 | cp data/raw/bike_daily.csv /tmp/copy.csv
+failures: 0
+
+$ hook stderr for the fault-4 command:
+Blocked: this command writes to data/raw/, which is immutable (sha256 pinned in src/config.py).
+  command: cp /tmp/bike_daily_fixed.csv data/raw/bike_daily.csv
+Write derived data to data/processed/ instead. To restore the raw file: git checkout -- data/raw/
+exit=2
+```
+
+It filters the command string and is not a sandbox: an obfuscated command
+(`eval`, a variable holding the path) gets through. That is why the
+sha256 check stays as the backstop.
+
+Not implemented:
+
 - A **Stop hook** that runs `make test`, now including the hash test, and
   exits 2, so the agent cannot declare itself done on a tampered file.
 - A **filesystem permission**: mark `data/raw/bike_daily.csv` read-only
