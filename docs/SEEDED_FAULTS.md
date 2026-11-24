@@ -339,10 +339,29 @@ It filters the command string and is not a sandbox: an obfuscated command
 (`eval`, a variable holding the path) gets through. That is why the
 sha256 check stays as the backstop.
 
+### Third mechanism: no "done" on a red suite
+
+`.claude/hooks/stop_tests.sh`, registered as a **Stop hook**, runs the
+whole suite (including the hash test) when the agent tries to finish, and
+exits 2 if anything is red. On the second attempt it honours
+`stop_hook_active` so it cannot loop. Real run, with fault 4 re-seeded:
+
+```
+$ # green tree
+exit=0
+$ cp bike_daily_fixed.csv data/raw/bike_daily.csv   # fault 4 again, then the agent tries to stop
+Not done: the test suite is red. Fix it before finishing.
+FAILED tests/test_contract.py::test_raw_file_is_unmodified - ValueError: bike...
+1 failed, 18 passed in 3.37s
+exit=2
+$ # second stop attempt (stop_hook_active=true)
+exit=0
+$ git checkout -- data/raw/ && sha256sum data/raw/bike_daily.csv
+a6bed1577f6e4de56dcfae6d8315985073cc0ad3446c8c99ed60c86a0b5ad9dc *data/raw/bike_daily.csv
+```
+
 Not implemented:
 
-- A **Stop hook** that runs `make test`, now including the hash test, and
-  exits 2, so the agent cannot declare itself done on a tampered file.
 - A **filesystem permission**: mark `data/raw/bike_daily.csv` read-only
   (`chmod a-w`, or `attrib +R` on Windows). This catches every tool, but
   the agent can undo it with another shell command.
