@@ -2,26 +2,51 @@
 
 ## Part A: `/leakage-auditor` on a teammate's repo
 
-**Teammate repo:** TODO: paste the teammate's repository URL
+**Teammate repo:** https://github.com/mihirnvad/DSC180A-Methodology-6
+(cloned at `cbdc552`; diff reviewed: `git diff b183a4e HEAD -- src tests`,
+where `b183a4e` is their unmodified starter. I confirmed `src/features.py`
+there is byte-identical to the starter zip.)
 
-> **Not done yet.** This section needs a teammate's repo, and none was
-> available when this file was written. To complete it: clone their repo, run
-> `claude` from inside it (so their `.claude/agents/leakage-auditor.md` is
-> loaded), ask *"Use the leakage-auditor subagent to review this repo's
-> src/features.py and src/train.py"*, and paste its reply verbatim below.
+**How it was run.** Their `.claude/agents/leakage-auditor.md` (identical to
+the starter's) was run headless through the Agent SDK. The system prompt is
+the subagent's body, the tools are exactly its `Read, Grep, Glob, Bash`, and
+Edit/Write are disallowed. `setting_sources=[]` keeps their `settings.json`
+(hooks, Ollama endpoint) from loading on my machine. The prompt only named
+the diff to review and said `python` with the pinned requirements was on
+PATH. Model and turns: `model=claude-opus-5-5 turns=6 is_error=False`. The runner script is not in this repo; it
+lived in my scratch directory.
 
 ### Auditor output (verbatim)
 
 ```
-TODO: paste /leakage-auditor output
+All five checks pass, with no finding that changes a number or invalidates a conclusion: I re-ran the pipeline and tests (16 passed, `reports/metrics.json` reproduced), altering targets from date *t* onward at every fifth date changed no feature dated up to *t*, all 714 rows' lag and rolling values match an independent calendar-day recomputation, the split is by date and the scaler was fitted on the 348 training rows only, the 14 lost rows are exactly the 7 warm-up days plus the 7 after the 2011-03-10 gap (within the asserted bound, all 20 BAD-weather days kept), and both baselines are reported beside the model scores in `train` and `target_transform` (`compare_persistence` prints only persistence, but the mean baseline on the same rows is in `metrics.json`, so its conclusion stands).
 ```
 
 ### My verdict
 
-TODO: one paragraph, kept separate from the auditor's text. Which findings
-change a number (name the metric and roughly how much), which I agree with,
-and which are style or false positives. If it found nothing, say so here
-and leave the run above as evidence.
+The auditor reported nothing that changes a number, and I agree. I checked
+three of its claims myself. After its run, `git status` in their clone was
+empty: its pipeline re-run left `reports/metrics.json` byte-identical. Their
+REPORT.md table matches metrics.json to the printed digit (e.g. ridge test
+0.6356 / 840.3, hgb valid 0.0977). Their feature `cnt_roll_7_std` shifts
+before it rolls and needs no extra warm-up (714 rows, same as the starter).
+Two things fall outside its five checks and change no number, but would
+cost them points:
+
+1. `src/target_transform.py` chooses the transform on validation and then,
+   in the same function, prints **test** scores (lines 67-75). So every run
+   while iterating shows test numbers. "Test touched once" holds by
+   discipline, not by construction. Minimal fix: print test only behind a
+   `--final` flag.
+2. Their Results table has 8 rows, but they are 4 models × {valid, test}.
+   There are no *before/after-feature* rows, which rubric item 4 asks for. The
+   before numbers are in their DECISIONS.md line for `cnt_roll_7_std`, but
+   not in the table.
+
+I'd also note that the auditor's checks cover none of the enforcement
+layer. Their repo independently hit the same Windows `python3` hook bug I
+found (their commit `1ed55c8`), and no line of a leakage review would have
+caught it.
 
 ## Part B: `agent/audit.py` on this repo
 
