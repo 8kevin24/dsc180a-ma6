@@ -1,0 +1,4 @@
+# The raw CSV is hash-checked by `make data`; never let git rewrite its bytes.
+data/raw/*.csv -text
+# Hooks and scripts must keep LF or bash refuses them.
+*.sh text eol=lf
