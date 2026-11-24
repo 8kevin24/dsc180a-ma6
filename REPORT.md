@@ -106,8 +106,10 @@ in the Claude Code VS Code extension on Windows. It was **not** the local
 `bikeshare-coder` / `qwen3.5:9b` Ollama build: Ollama was not installed on
 this machine. I did not set the context window, and I do not know its
 exact size. The batch audit (`reports/audit.jsonl`) ran
-`agent/audit.py` with `AUDIT_MODEL=claude-sonnet-5-5`, also hosted. I did
-not switch models mid-task. Because the agent ran from outside this repo,
+`agent/audit.py` with `AUDIT_MODEL=claude-sonnet-5-5`, also hosted. The
+teammate audit (`docs/AUDIT.md` Part A) ran their leakage-auditor prompt on
+`claude-opus-5-5` via `agent/run_leakage_auditor.py`. I did not switch
+models mid-task. Because the agent ran from outside this repo,
 the project's PostToolUse hook was not registered in its session. Hook
 output in `docs/SEEDED_FAULTS.md` comes from piping the exact PostToolUse
 payload into the hook script, as that file says.
@@ -126,15 +128,25 @@ payload into the hook script, as that file says.
   `test_rolling_mean_excludes_today`
 - `tests/test_contract.py`: `test_every_raw_column_is_classified`,
   `test_raw_file_is_unmodified`
-- `.claude/hooks/check_leakage.sh` (Windows fix), `.claude/skills/seed-fault/SKILL.md`,
-  `.gitattributes`, `CLAUDE.md` edits, all of `docs/SEEDED_FAULTS.md`,
-  `docs/AUDIT.md`, this report, and the commit sequence
+- `.claude/hooks/check_leakage.sh` (Windows fix), `.claude/hooks/guard_raw.sh`
+  (PreToolUse on Bash), `.claude/hooks/stop_tests.sh` (Stop), their
+  registration in `.claude/settings.json`, `.claude/skills/seed-fault/SKILL.md`
+- `agent/run_leakage_auditor.py`
+- `.gitattributes`, the Python >= 3.12 note in `requirements.txt`,
+  `CLAUDE.md` edits, all of `docs/SEEDED_FAULTS.md`, `docs/AUDIT.md`
+  (including the verdict paragraphs, which I reviewed), this report, and the
+  commit sequence
 
 **What was my decision** (each traces to a line in `docs/DECISIONS.md`):
 - Keep `cnt_roll_28` (+0.038 valid R² on identical rows).
 - Decouple `LAG_WARMUP` from window lengths.
 - Fail on unclassified raw columns.
-- Pin the raw file's sha256 as the fourth-fault mechanism.
+- Fix the leakage hook that silently passed on Windows.
+- Pin the raw file's sha256 as the fourth-fault mechanism, then add a
+  PreToolUse Bash guard and a Stop hook on top of it.
 - Choose `log_ratio28` for Exercise 4, and judge it defensible-with-caveats.
 - Add the `/seed-fault` skill and the CLAUDE.md rules.
+- Document Python >= 3.12 rather than change the pins.
+- Exercise 3: agree with the teammate auditor's clean verdict, and flag two
+  non-numeric issues.
 - Exercise 5: don't deploy ridge over persistence until its level bias is fixed.
