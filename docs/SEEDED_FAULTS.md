@@ -249,3 +249,69 @@ exit=2
 
 Agent turns to fix: **2**. One `Edit` writing the test that exposes the
 fault, and one `Edit` restoring the `raise`. After that, 18 passed.
+
+## Fault 4: a `cp` into `data/raw/` from Bash (the hook cannot see it)
+
+The seed was a plausible "cleaned" raw file. I took the Hurricane Sandy day
+(2012-10-29: casual 2, registered 20, cnt 22) and rewrote it as a typical
+late-October day (600 / 4400 / 5000). `casual + registered == cnt` still
+holds, so the identity test has nothing to object to. Then I copied the
+result over the raw file from Bash:
+
+```
+$ cp "$SCRATCH/bike_daily_fixed.csv" data/raw/bike_daily.csv
+$ sha256sum data/raw/bike_daily.csv
+edb418fb3491b25e6942e26017a2bc03dd60dbd5bdd25d3acad340b3d2cebc2e *data/raw/bike_daily.csv
+$ git status --short data/raw
+ M data/raw/bike_daily.csv
+$ python -m pytest tests -q
+18 passed in 2.81s
+$ python -m src.ingest && python -m src.features && python -m src.train  (valid/test ridge only)
+OK ingest: 728 rows, 2011-01-03 -> 2012-12-31
+OK features: 672 rows, 15 features -> features.parquet
+ridge {'valid': {'r2': 0.6839, 'mae': 777.5}, 'test': {'r2': 0.6176, 'mae': 860.5}}
+```
+
+What happened: **nothing stopped it, and nothing went red.**
+
+- The PostToolUse hook matches `Edit|Write` only, so a Bash `cp` never
+  triggers it. Even if it did, its `case` only reacts to `src/*.py`.
+- The `Write(./data/raw/**)` / `Edit(./data/raw/**)` deny rules apply to
+  those tools, not to a shell command that writes the same path.
+- All 18 tests passed on the altered data.
+- Validation was unchanged (Sandy is in test), so the test numbers shifted
+  silently: ridge test R^2 0.6239 -> 0.6176 and MAE 879.3 -> 860.5;
+  persistence test R^2 0.5099 -> 0.4869. A reported test result now rests
+  on data nobody can reproduce.
+
+What catches it: a **hash check**, which I implemented.
+`src/config.py` pins `RAW_SHA256`. `src/ingest.py::verify_raw()` runs in
+`make data` and in the new `tests/test_contract.py::test_raw_file_is_unmodified`.
+`.gitattributes` marks the CSV `-text`, so a Windows checkout with
+`core.autocrlf=true` cannot change its bytes and trip the check falsely.
+Re-seeding the same `cp` with the check in place:
+
+```
+$ make data
+ValueError: bike_daily.csv sha256 edb418fb3491b25e... != expected a6bed1577f6e4de5...; the raw file was modified. Restore it with: git checkout -- data/raw/
+exit=1
+$ make test
+D:\capstone\bikeshare-open\src\ingest.py:33: ValueError: bike_daily.csv sha256 edb418fb3491b25e... != expected a6bed1577f6e4de5...; the raw file was modified. Restore it with: git checkout -- data/raw/
+=========================== short test summary info ===========================
+FAILED tests/test_contract.py::test_raw_file_is_unmodified - ValueError: bike...
+1 failed, 18 passed in 2.57s
+```
+
+Restored with `git checkout -- data/raw/`. The sha256 is back to `a6bed1577f6e4de5...`.
+
+Other mechanisms that would also work, but are not implemented here:
+
+- A **PreToolUse hook on `Bash`** that exits 2 when the command string
+  writes to `data/raw/` (`cp`, `mv`, `>`, `tee`, `sed -i`). This blocks the
+  write before it happens. A command string can be obfuscated, so it is a
+  filter, not a guarantee.
+- A **Stop hook** that runs `make test`, now including the hash test, and
+  exits 2, so the agent cannot declare itself done on a tampered file.
+- A **filesystem permission**: mark `data/raw/bike_daily.csv` read-only
+  (`chmod a-w`, or `attrib +R` on Windows). This catches every tool, but
+  the agent can undo it with another shell command.

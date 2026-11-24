@@ -74,3 +74,12 @@ def test_every_raw_column_is_classified(feats):
     # is declared a raw feature.
     leaked_through = (set(feature_columns(feats)) & header) - RAW_FEATURE_COLS
     assert not leaked_through, f"undeclared raw columns used as features: {sorted(leaked_through)}"
+
+
+def test_raw_file_is_unmodified():
+    """The deny rules on data/raw/ only cover Edit and Write; a Bash `cp`
+    walks straight past them, and every other test stays green on a
+    plausibly 'corrected' file. Pin the bytes."""
+    from src.ingest import verify_raw
+
+    verify_raw()
