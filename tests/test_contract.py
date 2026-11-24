@@ -56,3 +56,21 @@ def test_persistence_baseline_is_reported():
     """The baseline that matters for a lag-driven model is 'yesterday again'.
     It must be in the comparison, whatever its score."""
     assert "baseline_persistence" in MODELS
+
+
+def test_every_raw_column_is_classified(feats):
+    """Each column in the raw CSV must be named in src/config.py: forbidden,
+    a raw feature, an encoded source, a redundant calendar string, or the
+    date. Read from the file header, not from load_raw(), so an appended or
+    innocently renamed column (say `casual` -> `walkups`) goes red here
+    before feature_columns() quietly admits it as a numeric feature."""
+    from src.config import CLASSIFIED_COLS, RAW, RAW_FEATURE_COLS
+
+    header = set(pd.read_csv(RAW, nrows=0).columns)
+    unclassified = header - CLASSIFIED_COLS
+    assert not unclassified, f"raw columns not classified in src/config.py: {sorted(unclassified)}"
+
+    # And the other direction: a raw column may only be a model input if it
+    # is declared a raw feature.
+    leaked_through = (set(feature_columns(feats)) & header) - RAW_FEATURE_COLS
+    assert not leaked_through, f"undeclared raw columns used as features: {sorted(leaked_through)}"
