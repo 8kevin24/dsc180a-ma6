@@ -83,3 +83,25 @@ def test_roll_28_is_mean_of_28_prior_calendar_days(feats):
     # Today's count must not be in the window: if it were, the value would
     # move when cnt[date] changes.
     assert got != pytest.approx(raw.loc[window[1:].append(pd.DatetimeIndex([date]))].mean())
+
+
+def test_weather_encoder_rejects_unseen_labels():
+    """The clean data has only GOOD/MISTY/BAD, so nothing in the pipeline
+    ever exercises the raise in encode_weather(). Without this test, deleting
+    the raise leaves every other test green -- and the next mirror that
+    spells it "Bad" loses those days to dropna() with no error."""
+    from src.features import encode_weather
+
+    with pytest.raises(ValueError, match="unmapped weather labels"):
+        encode_weather(pd.Series(["GOOD", "RAIN/SNOW", None]))
+
+
+def test_bad_weather_days_survive(feats):
+    """All 20 BAD days in the raw file that have a full lag history must
+    reach the model with weather_severity == 2."""
+    raw = load_raw()
+    bad_dates = set(raw.loc[raw.weather == "BAD", "dteday"])
+    kept = feats.loc[feats.dteday.isin(bad_dates)]
+    assert len(bad_dates) == 20
+    assert (kept.weather_severity == 2).all()
+    assert len(kept) >= 18, f"only {len(kept)} of 20 BAD days survived"

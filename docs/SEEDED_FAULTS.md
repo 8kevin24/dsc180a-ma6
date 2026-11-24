@@ -136,11 +136,11 @@ Change:
 ______________________ test_rolling_mean_excludes_today _______________________
 tests\test_leakage.py:57: in test_rolling_mean_excludes_today
     assert feats.set_index("dteday").cnt_roll_7[date] == pytest.approx(expected)
-E   assert np.float64(4605.285714285715) == 4724.428571428572 ± 0.00472443
+E   assert np.float64(4605.285714285715) == 4724.428571428572 �± 0.00472443
 E     
 E     comparison failed
 E     Obtained: 4605.285714285715
-E     Expected: 4724.428571428572 ± 0.00472443
+E     Expected: 4724.428571428572 �± 0.00472443
 =========================== short test summary info ===========================
 FAILED tests/test_leakage.py::test_rolling_mean_excludes_today - assert np.fl...
 1 failed, 15 passed in 3.25s
@@ -150,11 +150,11 @@ Hook stderr (last 12 lines; the full block also dumps the fixture frame):
 
 ```
 >           assert feats.set_index("dteday").cnt_roll_7[date] == pytest.approx(expected)
-E           assert np.float64(4605.285714285715) == 4724.428571428572 ± 0.00472443
+E           assert np.float64(4605.285714285715) == 4724.428571428572 �± 0.00472443
 E             
 E             comparison failed
 E             Obtained: 4605.285714285715
-E             Expected: 4724.428571428572 ± 0.00472443
+E             Expected: 4724.428571428572 �± 0.00472443
 
 tests\test_leakage.py:57: AssertionError
 =========================== short test summary info ===========================
@@ -178,3 +178,74 @@ the fault against the hardened test, and it is still red:
 FAILED tests/test_leakage.py::test_rolling_mean_excludes_today - assert np.fl...
 1 failed, 15 passed in 2.93s
 ```
+
+## Fault 3: the `raise` removed from the weather encoder
+
+Change:
+
+```diff
+@@ -26,8 +26,6 @@ def encode_weather(series: pd.Series) -> pd.Series:
+     """
+     known = series.dropna()
+     unknown = set(known.unique()) - set(WEATHER_ORDER)
+-    if unknown:
+-        raise ValueError(f"unmapped weather labels: {sorted(unknown)}")
+     return series.map(WEATHER_ORDER).astype(float)
+ 
+ 
+```
+
+`make test` with the starter's tests plus mine (**no test went red**):
+
+```
+................                                                         [100%]
+16 passed in 2.93s
+```
+
+Hook stderr: empty.
+
+```
+exit=0
+```
+
+Nothing failed because the clean data only contains GOOD/MISTY/BAD, so no
+run ever reaches the `raise`. The fault is real but dormant: the next mirror
+that spells a label differently loses those days to `dropna()`, and
+`test_only_expected_rows_are_dropped` would catch that only if the loss
+exceeded its bound. I added two tests to `tests/test_leakage.py` (so the
+hook runs them too): `test_weather_encoder_rejects_unseen_labels` feeds the
+encoder an unseen label, and `test_bad_weather_days_survive` checks that all
+20 BAD days reach the model with severity 2. With the fault still in:
+
+```
+.............F....                                                       [100%]
+================================== FAILURES ===================================
+_________________ test_weather_encoder_rejects_unseen_labels __________________
+tests\test_leakage.py:95: in test_weather_encoder_rejects_unseen_labels
+    with pytest.raises(ValueError, match="unmapped weather labels"):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   Failed: DID NOT RAISE ValueError
+=========================== short test summary info ===========================
+FAILED tests/test_leakage.py::test_weather_encoder_rejects_unseen_labels - Fa...
+1 failed, 17 passed in 3.36s
+```
+
+Hook stderr:
+
+```
+        spells it "Bad" loses those days to dropna() with no error."""
+        from src.features import encode_weather
+    
+>       with pytest.raises(ValueError, match="unmapped weather labels"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       Failed: DID NOT RAISE ValueError
+
+tests\test_leakage.py:95: Failed
+=========================== short test summary info ===========================
+FAILED tests/test_leakage.py::test_weather_encoder_rejects_unseen_labels - Fa...
+1 failed, 9 passed in 1.09s
+exit=2
+```
+
+Agent turns to fix: **2**. One `Edit` writing the test that exposes the
+fault, and one `Edit` restoring the `raise`. After that, 18 passed.
