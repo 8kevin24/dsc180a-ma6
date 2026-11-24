@@ -49,12 +49,15 @@ def test_lag_is_not_the_target(feats):
 
 def test_rolling_mean_excludes_today(feats):
     """cnt_roll_7 must be the mean of the 7 calendar days *before* today."""
-    by_date = feats.set_index("dteday")[TARGET]
-    date = feats.dteday.iloc[200]
+    # Hand-computed from the raw file on a fixed date, and asserted
+    # unconditionally: the starter wrapped this in `if all(d in index ...)`,
+    # which passes vacuously whenever the sampled window touches a gap.
+    by_date = load_raw().set_index("dteday")[TARGET]
+    date = pd.Timestamp("2011-09-15")
     window = [date - pd.Timedelta(days=k) for k in range(1, 8)]
-    if all(d in by_date.index for d in window):
-        expected = sum(by_date[d] for d in window) / 7
-        assert feats.set_index("dteday").cnt_roll_7[date] == pytest.approx(expected)
+    assert all(d in by_date.index for d in window), "fixture date must have a full window"
+    expected = sum(by_date[d] for d in window) / 7
+    assert feats.set_index("dteday").cnt_roll_7[date] == pytest.approx(expected)
 
 
 def test_no_missing_values(feats):

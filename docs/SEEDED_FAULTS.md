@@ -111,3 +111,70 @@ exit=2
 Agent turns to fix: **1** (one `Edit` reverting the line; `make test` then
 printed `16 passed`). Both the starter's gate test and my new contract test
 went red.
+
+## Fault 2: `.shift(1)` deleted from `cnt_roll_7`
+
+Change:
+
+```diff
+@@ -73,7 +73,7 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
+     # If you add a longer window, raise LAG_WARMUP in src/config.py.
+     out["cnt_lag_1"] = out[TARGET].shift(1)
+     out["cnt_lag_7"] = out[TARGET].shift(WEEK)
+-    out["cnt_roll_7"] = out[TARGET].shift(1).rolling(WEEK).mean()
++    out["cnt_roll_7"] = out[TARGET].rolling(WEEK).mean()
+     # 28-day level: the mean of the 28 calendar days before today. Known at
+     # prediction time for d (uses d-28 .. d-1 only). Tracks the slow 2011->
+     # 2012 growth that a 7-day window confuses with weekly noise.
+```
+
+`make test`:
+
+```
+.........F......                                                         [100%]
+================================== FAILURES ===================================
+______________________ test_rolling_mean_excludes_today _______________________
+tests\test_leakage.py:57: in test_rolling_mean_excludes_today
+    assert feats.set_index("dteday").cnt_roll_7[date] == pytest.approx(expected)
+E   assert np.float64(4605.285714285715) == 4724.428571428572 ± 0.00472443
+E     
+E     comparison failed
+E     Obtained: 4605.285714285715
+E     Expected: 4724.428571428572 ± 0.00472443
+=========================== short test summary info ===========================
+FAILED tests/test_leakage.py::test_rolling_mean_excludes_today - assert np.fl...
+1 failed, 15 passed in 3.25s
+```
+
+Hook stderr (last 12 lines; the full block also dumps the fixture frame):
+
+```
+>           assert feats.set_index("dteday").cnt_roll_7[date] == pytest.approx(expected)
+E           assert np.float64(4605.285714285715) == 4724.428571428572 ± 0.00472443
+E             
+E             comparison failed
+E             Obtained: 4605.285714285715
+E             Expected: 4724.428571428572 ± 0.00472443
+
+tests\test_leakage.py:57: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_leakage.py::test_rolling_mean_excludes_today - assert np.fl...
+1 failed, 7 passed in 1.07s
+exit=2
+```
+
+Agent turns to fix: **1** (one `Edit` restoring `.shift(1)`).
+
+It was caught, but by luck. The starter's test sampled `feats.dteday.iloc[200]`
+and wrapped the assertion in `if all(d in by_date.index for d in window):`,
+with `by_date` taken from the *feature* frame, which has rows missing after
+the 2011-03-10 gap. If the sampled date's window touches a gap, the test
+asserts nothing and passes. My change to `cnt_roll_28` moved `iloc[200]`
+from 2011-08-06 to 2011-09-17. I hardened the test in the same commit: fixed
+date 2011-09-15, window from the raw file, unconditional assert. I re-seeded
+the fault against the hardened test, and it is still red:
+
+```
+FAILED tests/test_leakage.py::test_rolling_mean_excludes_today - assert np.fl...
+1 failed, 15 passed in 2.93s
+```
