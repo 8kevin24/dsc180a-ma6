@@ -1,6 +1,8 @@
 # Pinned so `make all` reproduces reports/metrics.json to the printed digit.
 # HistGradientBoostingRegressor in particular changes results across
 # scikit-learn releases; an unpinned install will drift the hgb row.
+# Requires Python >= 3.12: numpy 2.5.3 publishes no wheels for 3.11, so
+# `pip install -r requirements.txt` fails there. Verified on Python 3.13.13.
 numpy==2.5.3
 pandas==3.0.5
 pyarrow==26.0.1

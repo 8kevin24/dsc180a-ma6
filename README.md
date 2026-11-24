@@ -17,7 +17,7 @@ needed. Nothing leaves your laptop.
     curl -fsSL https://claude.ai/install.sh | bash
 
     # 3. This repo
-    python3 -m venv .venv && source .venv/bin/activate
+    python3 -m venv .venv && source .venv/bin/activate   # Python >= 3.12 (see requirements.txt)
     pip install -r requirements.txt
     make model          # pulls the base model, builds `bikeshare-coder` with a 64k context
     make check-model    # confirms Claude Code can reach it and that tool calls work
